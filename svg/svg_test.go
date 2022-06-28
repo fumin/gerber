@@ -63,7 +63,7 @@ func TestGerber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
-	t.Logf("outDir %s", outDir)
+	// t.Logf("outDir %s", outDir)
 	defer os.RemoveAll(outDir)
 
 	src := filepath.Join("testdata", "Gerber", "clockblock-F_Cu.gbr")

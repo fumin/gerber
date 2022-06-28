@@ -5,9 +5,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"image"
 	"io"
-	"log"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -49,12 +50,25 @@ type Circle struct {
 	Y      int
 	Radius int
 	Fill   string
+	Attr   map[string]string
+}
+
+func (e Circle) Bounds() image.Rectangle {
+	return image.Rect(e.X-e.Radius, e.Y-e.Radius, e.X+e.Radius, e.Y+e.Radius)
 }
 
 // MarshalJSON implements json.Marshaler.
 func (e Circle) MarshalJSON() ([]byte, error) {
 	e.Type = ElementTypeCircle
 	return marshalByMap(e)
+}
+
+func (e Circle) SetAttr(k, v string) Circle {
+	if e.Attr == nil {
+		e.Attr = make(map[string]string)
+	}
+	e.Attr[k] = v
+	return e
 }
 
 func marshalByMap(e interface{}) ([]byte, error) {
@@ -81,12 +95,25 @@ type Rectangle struct {
 	RX       int
 	RY       int
 	Fill     string
+	Attr     map[string]string
+}
+
+func (e Rectangle) Bounds() image.Rectangle {
+	return image.Rect(e.X, e.Y, e.X+e.Width, e.Y+e.Height)
 }
 
 // MarshalJSON implements json.Marshaler.
 func (e Rectangle) MarshalJSON() ([]byte, error) {
 	e.Type = ElementTypeRectangle
 	return marshalByMap(e)
+}
+
+func (e Rectangle) SetAttr(k, v string) Rectangle {
+	if e.Attr == nil {
+		e.Attr = make(map[string]string)
+	}
+	e.Attr[k] = v
+	return e
 }
 
 // A PathLine is a line in a SVG path.
@@ -130,12 +157,45 @@ type Path struct {
 	Y        int
 	Commands []interface{}
 	Fill     string
+	Attr     map[string]string
+}
+
+func (e Path) Bounds() (image.Rectangle, error) {
+	bounds := image.Rectangle{Min: image.Point{math.MaxInt, math.MaxInt}, Max: image.Point{-math.MaxInt, -math.MaxInt}}
+	updateMinMax := func(x, y int) {
+		bounds.Min.X = minI(bounds.Min.X, x)
+		bounds.Max.X = maxI(bounds.Max.X, x)
+		bounds.Min.Y = minI(bounds.Min.Y, y)
+		bounds.Max.Y = maxI(bounds.Max.Y, y)
+	}
+
+	updateMinMax(e.X, e.Y)
+	for _, cmd := range e.Commands {
+		switch c := cmd.(type) {
+		case PathLine:
+			updateMinMax(c.X, c.Y)
+		case PathArc:
+			updateMinMax(c.X, c.Y)
+		default:
+			return image.Rectangle{}, errors.Errorf("%#v", c)
+		}
+	}
+
+	return bounds, nil
 }
 
 // MarshalJSON implements json.Marshaler.
 func (e Path) MarshalJSON() ([]byte, error) {
 	e.Type = ElementTypePath
 	return marshalByMap(e)
+}
+
+func (e Path) SetAttr(k, v string) Path {
+	if e.Attr == nil {
+		e.Attr = make(map[string]string)
+	}
+	e.Attr[k] = v
+	return e
 }
 
 // A Line is a SVG line.
@@ -150,12 +210,25 @@ type Line struct {
 	Cap         string
 
 	Stroke string
+	Attr   map[string]string
+}
+
+func (e Line) Bounds() image.Rectangle {
+	return image.Rect(e.X1, e.Y1, e.X2, e.Y2)
 }
 
 // MarshalJSON implements json.Marshaler.
 func (e Line) MarshalJSON() ([]byte, error) {
 	e.Type = ElementTypeLine
 	return marshalByMap(e)
+}
+
+func (e Line) SetAttr(k, v string) Line {
+	if e.Attr == nil {
+		e.Attr = make(map[string]string)
+	}
+	e.Attr[k] = v
+	return e
 }
 
 // An Arc is a SVG Arc.
@@ -175,12 +248,25 @@ type Arc struct {
 	CenterX int
 	CenterY int
 	Stroke  string
+	Attr    map[string]string
+}
+
+func (e Arc) Bounds() image.Rectangle {
+	return image.Rect(e.CenterX-e.RadiusX, e.CenterY-e.RadiusX, e.CenterX+e.RadiusX, e.CenterY+e.RadiusY)
 }
 
 // MarshalJSON implements json.Marshaler.
 func (e Arc) MarshalJSON() ([]byte, error) {
 	e.Type = ElementTypeArc
 	return marshalByMap(e)
+}
+
+func (e Arc) SetAttr(k, v string) Arc {
+	if e.Attr == nil {
+		e.Attr = make(map[string]string)
+	}
+	e.Attr[k] = v
+	return e
 }
 
 // A Processor is a performer of Gerber graphic operations.
@@ -372,6 +458,24 @@ func (p *Processor) SetViewbox(minX, maxX, minY, maxY int) {
 	p.MaxY = maxY
 }
 
+func attr(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	s := ""
+	for _, k := range keys {
+		s += fmt.Sprintf(` %s="%s"`, k, m[k])
+	}
+	return s
+}
+
 //go:embed svgpan.js
 var svgpan string
 
@@ -393,19 +497,23 @@ func (p *Processor) Write(w io.Writer) error {
 		}
 	}
 
-	svgBound := Rectangle{X: p.MinX, Y: p.MaxY, Width: p.MaxX - p.MinX, Height: p.MaxY - p.MinY}
+	svgBound := image.Rect(p.MinX, p.MinY, p.MaxX, p.MaxY)
 	for _, datum := range p.Data {
-		if outOfBound(datum, svgBound) {
+		bounds, err := Bounds(datum)
+		if err != nil {
+			return errors.Wrap(err, "")
+		}
+		if bounds.Min.X > svgBound.Max.X || svgBound.Min.X > bounds.Max.X || bounds.Min.Y > svgBound.Max.Y || svgBound.Min.Y > bounds.Max.Y {
 			continue
 		}
 
 		var b []byte
 		switch d := datum.(type) {
 		case Circle:
-			b = []byte(fmt.Sprintf(`<circle cx="%s" cy="%s" r="%s" fill="%s" line="%d"/>`, p.x(d.X), p.y(d.Y), p.m(d.Radius), d.Fill, d.Line))
+			b = []byte(fmt.Sprintf(`<circle cx="%s" cy="%s" r="%s" fill="%s" line="%d"%s/>`, p.x(d.X), p.y(d.Y), p.m(d.Radius), d.Fill, d.Line, attr(d.Attr)))
 		case Rectangle:
 			w, h := p.m(d.Width), p.m(d.Height)
-			b = []byte(fmt.Sprintf(`<rect x="%s" y="%s" width="%s" height="%s" rx="%s" ry="%s" aperture="%s" fill="%s" line="%d"/>`, p.x(d.X), p.y(d.Y), w, h, p.m(d.RX), p.m(d.RY), d.Aperture, d.Fill, d.Line))
+			b = []byte(fmt.Sprintf(`<rect x="%s" y="%s" width="%s" height="%s" rx="%s" ry="%s" aperture="%s" fill="%s" line="%d"%s/>`, p.x(d.X), p.y(d.Y), w, h, p.m(d.RX), p.m(d.RY), d.Aperture, d.Fill, d.Line, attr(d.Attr)))
 		case Path:
 			var err error
 			b, err = p.pathBytes(d)
@@ -413,9 +521,9 @@ func (p *Processor) Write(w io.Writer) error {
 				return errors.Wrap(err, "")
 			}
 		case Line:
-			b = []byte(fmt.Sprintf(`<line x1="%s" y1="%s" x2="%s" y2="%s" stroke-width="%s" stroke-linecap="%s" stroke="%s" line="%d"/>`, p.x(d.X1), p.y(d.Y1), p.x(d.X2), p.y(d.Y2), p.m(d.StrokeWidth), d.Cap, d.Stroke, d.Line))
+			b = []byte(fmt.Sprintf(`<line x1="%s" y1="%s" x2="%s" y2="%s" stroke-width="%s" stroke-linecap="%s" stroke="%s" line="%d"%s/>`, p.x(d.X1), p.y(d.Y1), p.x(d.X2), p.y(d.Y2), p.m(d.StrokeWidth), d.Cap, d.Stroke, d.Line, attr(d.Attr)))
 		case Arc:
-			b = []byte(fmt.Sprintf(`<path d="M %s %s A %s %s 0 %d %d %s %s" stroke-width="%s" stroke="%s" line="%d" stroke-linecap="round"/>`, p.x(d.XS), p.y(d.YS), p.m(d.RadiusX), p.m(d.RadiusY), d.LargeArc, d.Sweep, p.x(d.XE), p.y(d.YE), p.m(d.StrokeWidth), d.Stroke, d.Line))
+			b = []byte(fmt.Sprintf(`<path d="M %s %s A %s %s 0 %d %d %s %s" stroke-width="%s" stroke="%s" line="%d" stroke-linecap="round"%s/>`, p.x(d.XS), p.y(d.YS), p.m(d.RadiusX), p.m(d.RadiusY), d.LargeArc, d.Sweep, p.x(d.XE), p.y(d.YE), p.m(d.StrokeWidth), d.Stroke, d.Line, attr(d.Attr)))
 		default:
 			return errors.Errorf("%+v", d)
 		}
@@ -435,61 +543,21 @@ func (p *Processor) Write(w io.Writer) error {
 	return nil
 }
 
-func pathBound(p Path) Rectangle {
-	var minX, maxX, minY, maxY int = math.MaxInt, -math.MaxInt, math.MaxInt, -math.MaxInt
-	updateMinMax := func(x, y int) {
-		minX = minI(minX, x)
-		maxX = maxI(maxX, x)
-		minY = minI(minY, y)
-		maxY = maxI(maxY, y)
-	}
-
-	updateMinMax(p.X, p.Y)
-	for _, cmd := range p.Commands {
-		switch c := cmd.(type) {
-		case PathLine:
-			updateMinMax(c.X, c.Y)
-		case PathArc:
-			updateMinMax(c.CenterX-c.RadiusX, c.CenterY+c.RadiusY)
-			updateMinMax(c.CenterX+c.RadiusX, c.CenterY-c.RadiusY)
-		default:
-			log.Fatalf("%+v", c)
-		}
-	}
-
-	rect := Rectangle{X: minX, Y: maxY, Width: maxX - minX, Height: maxY - minY}
-	return rect
-}
-
-func outOfBound(element interface{}, svgBound Rectangle) bool {
-	var bound Rectangle
+func Bounds(element interface{}) (image.Rectangle, error) {
 	switch e := element.(type) {
 	case Circle:
-		bound = Rectangle{X: e.X - e.Radius, Y: e.Y + e.Radius, Width: e.Radius * 2, Height: e.Radius * 2}
+		return e.Bounds(), nil
 	case Rectangle:
-		bound = Rectangle{X: e.X, Y: e.Y, Width: e.Width, Height: e.Height}
-
+		return e.Bounds(), nil
 	case Path:
-		bound = pathBound(e)
+		return e.Bounds()
 	case Line:
-		minX, maxX := minI(e.X1, e.X2)-e.StrokeWidth, maxI(e.X1, e.X2)+e.StrokeWidth
-		minY, maxY := minI(e.Y1, e.Y2)-e.StrokeWidth, maxI(e.Y1, e.Y2)+e.StrokeWidth
-		bound = Rectangle{X: minX, Y: maxY, Width: maxX - minX, Height: maxY - minY}
+		return e.Bounds(), nil
 	case Arc:
-		rx, ry := e.RadiusX+e.StrokeWidth, e.RadiusY+e.StrokeWidth
-		bound = Rectangle{X: e.CenterX - rx, Y: e.CenterY + ry, Width: rx * 2, Height: ry * 2}
+		return e.Bounds(), nil
 	default:
-		log.Fatalf("%+v", e)
+		return image.Rectangle{}, errors.Errorf("%#v", e)
 	}
-
-	if bound.X+bound.Width < svgBound.X || svgBound.X+svgBound.Width < bound.X {
-		return true
-	}
-	if bound.Y-bound.Height > svgBound.Y || svgBound.Y-svgBound.Height > bound.Y {
-		return true
-	}
-
-	return false
 }
 
 func (p *Processor) pathBytes(svgp Path) ([]byte, error) {
@@ -506,7 +574,7 @@ func (p *Processor) pathBytes(svgp Path) ([]byte, error) {
 		}
 		cmds = append(cmds, s)
 	}
-	b := fmt.Sprintf(`<path d="%s" fill="%s" line="%d"/>`, strings.Join(cmds, " "), svgp.Fill, svgp.Line)
+	b := fmt.Sprintf(`<path d="%s" fill="%s" line="%d"%s/>`, strings.Join(cmds, " "), svgp.Fill, svgp.Line, attr(svgp.Attr))
 	return []byte(b), nil
 }
 

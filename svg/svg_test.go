@@ -47,14 +47,14 @@ M02*`
 
 	// Output:
 	// <svg viewBox="0 -5000000 11000000 5000000" style="background-color: black;" xmlns="http://www.w3.org/2000/svg">
-	// <line x1="0" y1="-0" x2="5000000" y2="-0" stroke-width="10000" stroke-linecap="round" stroke="white" line="9"/>
-	// <line x1="5000000" y1="-0" x2="5000000" y2="-5000000" stroke-width="10000" stroke-linecap="round" stroke="white" line="10"/>
-	// <line x1="5000000" y1="-5000000" x2="0" y2="-5000000" stroke-width="10000" stroke-linecap="round" stroke="white" line="11"/>
-	// <line x1="0" y1="-5000000" x2="0" y2="-0" stroke-width="10000" stroke-linecap="round" stroke="white" line="12"/>
-	// <line x1="6000000" y1="-0" x2="11000000" y2="-0" stroke-width="10000" stroke-linecap="round" stroke="white" line="14"/>
-	// <line x1="11000000" y1="-0" x2="11000000" y2="-5000000" stroke-width="10000" stroke-linecap="round" stroke="white" line="15"/>
-	// <line x1="11000000" y1="-5000000" x2="6000000" y2="-5000000" stroke-width="10000" stroke-linecap="round" stroke="white" line="16"/>
-	// <line x1="6000000" y1="-5000000" x2="6000000" y2="-0" stroke-width="10000" stroke-linecap="round" stroke="white" line="17"/>
+	// <line x1="0" y1="-0" x2="5000000" y2="-0" stroke-width="10000" stroke-linecap="round" stroke="white" line="8"/>
+	// <line x1="5000000" y1="-0" x2="5000000" y2="-5000000" stroke-width="10000" stroke-linecap="round" stroke="white" line="9"/>
+	// <line x1="5000000" y1="-5000000" x2="0" y2="-5000000" stroke-width="10000" stroke-linecap="round" stroke="white" line="10"/>
+	// <line x1="0" y1="-5000000" x2="0" y2="-0" stroke-width="10000" stroke-linecap="round" stroke="white" line="11"/>
+	// <line x1="6000000" y1="-0" x2="11000000" y2="-0" stroke-width="10000" stroke-linecap="round" stroke="white" line="13"/>
+	// <line x1="11000000" y1="-0" x2="11000000" y2="-5000000" stroke-width="10000" stroke-linecap="round" stroke="white" line="14"/>
+	// <line x1="11000000" y1="-5000000" x2="6000000" y2="-5000000" stroke-width="10000" stroke-linecap="round" stroke="white" line="15"/>
+	// <line x1="6000000" y1="-5000000" x2="6000000" y2="-0" stroke-width="10000" stroke-linecap="round" stroke="white" line="16"/>
 	// </svg>
 }
 
@@ -63,7 +63,7 @@ func TestGerber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
-	t.Logf("outDir %s", outDir)
+	// t.Logf("outDir %s", outDir)
 	defer os.RemoveAll(outDir)
 
 	src := filepath.Join("testdata", "Gerber", "clockblock-F_Cu.gbr")
@@ -79,6 +79,8 @@ func TestGerber(t *testing.T) {
 		if err != nil {
 			return errors.Wrap(err, "")
 		}
+		svgP.PolarityDark = "white"
+		svgP.PolarityClear = "black"
 
 		dstF, err := os.Create(dst)
 		if err != nil {

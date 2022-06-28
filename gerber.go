@@ -101,12 +101,28 @@ type template struct {
 	Primitives []interface{}
 }
 
-func parsePrimitive(word string) (interface{}, error) {
+type LinePrimitiveNotClosedError struct {
+	Line     int
+	First    [2]float64
+	Last     [2]float64
+	FirstStr [2]string
+	LastStr  [2]string
+}
+
+func (err LinePrimitiveNotClosedError) Error() string {
+	return fmt.Sprintf("line primitive not closed %d %#v %#v", err.Line, err.First, err.Last)
+}
+
+func parsePrimitive(lineIdx int, word string) (interface{}, error) {
 	splitted := strings.Split(word, primitiveDelimiter)
 	if len(splitted) == 0 {
 		return nil, errors.Errorf("no splitted")
 	}
-	code, err := strconv.Atoi(splitted[0])
+	curLine := lineIdx
+	if strings.Contains(splitted[0], "\n") {
+		curLine++
+	}
+	code, err := strconv.Atoi(strings.TrimSpace(splitted[0]))
 	if err != nil {
 		return nil, errors.Wrap(err, "")
 	}
@@ -116,22 +132,22 @@ func parsePrimitive(word string) (interface{}, error) {
 			return nil, errors.Errorf("%+v", splitted)
 		}
 		circle := circlePrimitive{}
-		exposure, err := strconv.Atoi(splitted[1])
+		exposure, err := strconv.Atoi(strings.TrimSpace(splitted[1]))
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
 		if exposure == 1 {
 			circle.Exposure = true
 		}
-		circle.Diameter, err = strconv.ParseFloat(splitted[2], 64)
+		circle.Diameter, err = strconv.ParseFloat(strings.TrimSpace(splitted[2]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		circle.CenterX, err = strconv.ParseFloat(splitted[3], 64)
+		circle.CenterX, err = strconv.ParseFloat(strings.TrimSpace(splitted[3]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		circle.CenterY, err = strconv.ParseFloat(splitted[4], 64)
+		circle.CenterY, err = strconv.ParseFloat(strings.TrimSpace(splitted[4]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
@@ -141,34 +157,34 @@ func parsePrimitive(word string) (interface{}, error) {
 			return nil, errors.Errorf("%+v", splitted)
 		}
 		line := vectorLinePrimitive{}
-		exposure, err := strconv.Atoi(splitted[1])
+		exposure, err := strconv.Atoi(strings.TrimSpace(splitted[1]))
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
 		if exposure == 1 {
 			line.Exposure = true
 		}
-		line.Width, err = strconv.ParseFloat(splitted[2], 64)
+		line.Width, err = strconv.ParseFloat(strings.TrimSpace(splitted[2]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.StartX, err = strconv.ParseFloat(splitted[3], 64)
+		line.StartX, err = strconv.ParseFloat(strings.TrimSpace(splitted[3]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.StartY, err = strconv.ParseFloat(splitted[4], 64)
+		line.StartY, err = strconv.ParseFloat(strings.TrimSpace(splitted[4]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.EndX, err = strconv.ParseFloat(splitted[5], 64)
+		line.EndX, err = strconv.ParseFloat(strings.TrimSpace(splitted[5]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.EndY, err = strconv.ParseFloat(splitted[6], 64)
+		line.EndY, err = strconv.ParseFloat(strings.TrimSpace(splitted[6]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.Rotation, err = strconv.ParseFloat(splitted[7], 64)
+		line.Rotation, err = strconv.ParseFloat(strings.TrimSpace(splitted[7]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
@@ -178,39 +194,57 @@ func parsePrimitive(word string) (interface{}, error) {
 		if len(splitted) < 3 {
 			return nil, errors.Errorf("%+v", splitted)
 		}
-		exposure, err := strconv.Atoi(splitted[1])
+
+		if strings.Contains(splitted[1], "\n") {
+			curLine++
+		}
+		exposure, err := strconv.Atoi(strings.TrimSpace(splitted[1]))
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
 		if exposure == 1 {
 			line.Exposure = true
 		}
-		line.NumVertices, err = strconv.Atoi(splitted[2])
+
+		if strings.Contains(splitted[2], "\n") {
+			curLine++
+		}
+		line.NumVertices, err = strconv.Atoi(strings.TrimSpace(splitted[2]))
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
 		if len(splitted) != 6+2*line.NumVertices {
 			return nil, errors.Errorf("%d", len(splitted))
 		}
+
+		points := make([][2]string, 0)
 		for i := 0; i < line.NumVertices+1; i++ {
-			x, err := strconv.ParseFloat(splitted[2*i+3], 64)
+			if strings.Contains(splitted[2*i+3], "\n") {
+				curLine++
+			}
+			x, err := strconv.ParseFloat(strings.TrimSpace(splitted[2*i+3]), 64)
 			if err != nil {
 				return nil, errors.Wrap(err, fmt.Sprintf("%d", i))
 			}
-			y, err := strconv.ParseFloat(splitted[2*i+4], 64)
+
+			if strings.Contains(splitted[2*i+4], "\n") {
+				curLine++
+			}
+			y, err := strconv.ParseFloat(strings.TrimSpace(splitted[2*i+4]), 64)
 			if err != nil {
 				return nil, errors.Wrap(err, fmt.Sprintf("%d", i))
 			}
 			line.Points = append(line.Points, [2]float64{x, y})
+			points = append(points, [2]string{strings.TrimSpace(splitted[2*i+3]), strings.TrimSpace(splitted[2*i+4])})
 		}
 
 		// The last point must be the same as the starting point.
 		if line.Points[0] != line.Points[len(line.Points)-1] {
-			return nil, errors.Errorf("last point not equal to first point %#v", line)
+			return nil, LinePrimitiveNotClosedError{Line: curLine, First: line.Points[0], Last: line.Points[len(line.Points)-1], FirstStr: points[0], LastStr: points[len(points)-1]}
 		}
 		line.Points = line.Points[:len(line.Points)-1]
 
-		line.Rotation, err = strconv.ParseFloat(splitted[len(splitted)-1], 64)
+		line.Rotation, err = strconv.ParseFloat(strings.TrimSpace(splitted[len(splitted)-1]), 64)
 		if err != nil {
 			return nil, errors.Errorf("%+v", splitted)
 		}
@@ -220,30 +254,30 @@ func parsePrimitive(word string) (interface{}, error) {
 			return nil, errors.Errorf("%+v", splitted)
 		}
 		line := lowerLeftLinePrimitive{}
-		exposure, err := strconv.Atoi(splitted[1])
+		exposure, err := strconv.Atoi(strings.TrimSpace(splitted[1]))
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
 		if exposure == 1 {
 			line.Exposure = true
 		}
-		line.Width, err = strconv.ParseFloat(splitted[2], 64)
+		line.Width, err = strconv.ParseFloat(strings.TrimSpace(splitted[2]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.Height, err = strconv.ParseFloat(splitted[3], 64)
+		line.Height, err = strconv.ParseFloat(strings.TrimSpace(splitted[3]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.X, err = strconv.ParseFloat(splitted[4], 64)
+		line.X, err = strconv.ParseFloat(strings.TrimSpace(splitted[4]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.Y, err = strconv.ParseFloat(splitted[5], 64)
+		line.Y, err = strconv.ParseFloat(strings.TrimSpace(splitted[5]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
-		line.Rotation, err = strconv.ParseFloat(splitted[6], 64)
+		line.Rotation, err = strconv.ParseFloat(strings.TrimSpace(splitted[6]), 64)
 		if err != nil {
 			return nil, errors.Wrap(err, "")
 		}
@@ -939,7 +973,7 @@ func (p *commandProcessor) processExtended(lineIdx int, words []string) error {
 	case strings.HasPrefix(words[0], commandAM):
 		tmpl := template{Line: lineIdx, Name: words[0][len(commandAM):]}
 		for _, w := range words[1:] {
-			primitive, err := parsePrimitive(w)
+			primitive, err := parsePrimitive(lineIdx, w)
 			if err != nil {
 				return errors.Wrap(err, "")
 			}
@@ -982,10 +1016,13 @@ func (p *Parser) parse(lineIdx int, line string) error {
 			p.cmdLines = append(p.cmdLines, line)
 			return nil
 		}
-		p.cmdLines = append(p.cmdLines, line[:len(line)-len(extendedCommandDelimiter)])
+		remainder := len(line) - len(extendedCommandDelimiter)
+		if remainder > 0 {
+			p.cmdLines = append(p.cmdLines, line[:remainder])
+		}
 
 		// Split by *
-		joined := strings.Join(p.cmdLines, "")
+		joined := strings.Join(p.cmdLines, "\n")
 		if len(joined) == 0 {
 			return errors.Errorf("%d", p.cmdStart)
 		}
@@ -1029,7 +1066,7 @@ func (p *Parser) parse(lineIdx int, line string) error {
 // Parse parses the Gerber format stream.
 func (parser *Parser) Parse(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
-	var lineIdx int
+	var lineIdx int = -1
 
 	for scanner.Scan() {
 		lineIdx++

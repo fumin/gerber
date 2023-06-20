@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -103,12 +104,27 @@ func TestGerber(t *testing.T) {
 }
 
 func TestProcessorJSONMarshal(t *testing.T) {
-	p := Processor{}
-	p.Data = append(p.Data, Circle{X: 11, Y: 23})
-	svgpath := Path{}
-	svgpath.Commands = append(svgpath.Commands, PathLine{X: 31, Y: 63})
-	svgpath.Commands = append(svgpath.Commands, PathArc{CenterX: -27, CenterY: -87})
+	p := Processor{
+		MinX:          123,
+		MaxX:          321,
+		MinY:          111,
+		MaxY:          222,
+		Decimal:       1.2,
+		PolarityDark:  "dark-color",
+		PolarityClear: "clear-color",
+		Scale:         1.3,
+		Width:         "ww",
+		Height:        "hh",
+		PanZoom:       true,
+	}
+	p.Data = append(p.Data, Circle{Type: ElementTypeCircle, Line: 33, X: 11, Y: 23, Radius: 55, Fill: "circle-fill"})
+	p.Data = append(p.Data, Rectangle{Type: ElementTypeRectangle, Line: 31, Aperture: "rect-aper", X: 23, Y: 24, Width: 33, Height: 44, RX: 87, RY: 98, Fill: "rect-fill"})
+	svgpath := Path{Type: ElementTypePath, Line: 2000, X: 2001, Y: 2002, Fill: "path-fill"}
+	svgpath.Commands = append(svgpath.Commands, PathLine{Type: ElementTypeLine, X: 31, Y: 63})
+	svgpath.Commands = append(svgpath.Commands, PathArc{Type: ElementTypeArc, RadiusX: -11, RadiusY: -12, LargeArc: 3, Sweep: 4, X: 57, Y: 58, CenterX: -27, CenterY: -87})
 	p.Data = append(p.Data, svgpath)
+	p.Data = append(p.Data, Line{Type: ElementTypeLine, Line: 1111, X1: 2222, Y1: 3333, X2: 4444, Y2: 5555, StrokeWidth: 6666, Cap: "line-cap", Stroke: "line-stroke"})
+	p.Data = append(p.Data, Arc{Type: ElementTypeArc, Line: -1111, XS: -2222, YS: -3333, RadiusX: -4444, RadiusY: -5555, LargeArc: -6666, Sweep: -7777, XE: -8888, YE: -9999, StrokeWidth: -1234, CenterX: -1235, CenterY: -1236, Stroke: "arc-stroke"})
 
 	b, err := json.Marshal(p)
 	if err != nil {
@@ -119,30 +135,7 @@ func TestProcessorJSONMarshal(t *testing.T) {
 		t.Fatalf("%+v", err)
 	}
 
-	e0, ok := unmarshaled.Data[0].(Circle)
-	if !ok {
-		t.Fatalf("%+v", unmarshaled)
-	}
-	if e0.X != 11 || e0.Y != 23 {
-		t.Fatalf("%+v", unmarshaled)
-	}
-
-	e1, ok := unmarshaled.Data[1].(Path)
-	if !ok {
-		t.Fatalf("%+v", unmarshaled)
-	}
-	p0, ok := e1.Commands[0].(PathLine)
-	if !ok {
-		t.Fatalf("%+v", unmarshaled)
-	}
-	if p0.X != 31 || p0.Y != 63 {
-		t.Fatalf("%+v", unmarshaled)
-	}
-	p1, ok := e1.Commands[1].(PathArc)
-	if !ok {
-		t.Fatalf("%+v", unmarshaled)
-	}
-	if p1.CenterX != -27 || p1.CenterY != -87 {
+	if !reflect.DeepEqual(unmarshaled, p) {
 		t.Fatalf("%+v", unmarshaled)
 	}
 }

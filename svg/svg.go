@@ -368,8 +368,10 @@ func (p *Processor) Contour(contour gerber.Contour) error {
 func calcArcParams(vs, ve [2]int, sweep int) (float64, int, error) {
 	radiusS := math.Sqrt(math.Pow(float64(vs[0]), 2) + math.Pow(float64(vs[1]), 2))
 	radiusE := math.Sqrt(math.Pow(float64(ve[0]), 2) + math.Pow(float64(ve[1]), 2))
-	if math.Abs(radiusS-radiusE) > 3 {
-		return math.NaN(), -1, errors.Errorf("%f %f", radiusS, radiusE)
+	diff := math.Abs(radiusS - radiusE)
+	diffRatio := math.Abs(radiusS/radiusE - 1)
+	if diff > 3 && diffRatio > 1e-2 {
+		return math.NaN(), -1, errors.Errorf("%f %f %f %f", radiusS, radiusE, diff, diffRatio)
 	}
 
 	var largeArc int
@@ -409,7 +411,7 @@ func calcArc(contour gerber.Contour, idx int) (PathArc, error) {
 
 	radius, largeArc, err := calcArcParams(vs, ve, arc.Sweep)
 	if err != nil {
-		return PathArc{}, errors.Wrap(err, "")
+		return PathArc{}, errors.Wrap(err, fmt.Sprintf("%#d %#d %#v", xs, ys, s))
 	}
 	arc.RadiusX, arc.RadiusY = int(math.Round(radius)), int(math.Round(radius))
 	arc.LargeArc = largeArc

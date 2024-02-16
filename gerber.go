@@ -433,6 +433,7 @@ const (
 	commandIP  = "IP"
 	commandLN  = "LN"
 	commandLP  = "LP"
+	commandG74 = "G74"
 	commandG75 = "G75"
 	commandAD  = "AD"
 	commandAM  = "AM"
@@ -525,6 +526,8 @@ func (p *commandProcessor) processWord(lineIdx int, word string) error {
 	case strings.HasPrefix(word, commandIP):
 		return nil
 	case strings.HasPrefix(word, commandLN):
+		return nil
+	case strings.HasPrefix(word, commandG74):
 		return nil
 	case strings.HasPrefix(word, commandG75):
 		return nil
